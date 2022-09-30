@@ -9,7 +9,7 @@ import missingno as msno
 from matplotlib import pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 170)
@@ -455,7 +455,7 @@ for col in [col for col in train.columns if train[col].dtypes != "object"]:
 
 for col in [col for col in train.columns if train[col].dtypes != "object"]:
     fig = plt.figure(figsize=(8, 6))
-    g = sns.distplot(x=np.log1p(train[col]), kde=False, color="orange", hist_kws=dict(edgecolor="black", linewidth=2))
+    g = sns.distplot(x=train[col], kde=False, color="orange", hist_kws=dict(edgecolor="black", linewidth=2))
     g.set_title("Col name: Log " + str(col))
     g.xaxis.set_minor_locator(AutoMinorLocator(5))
     g.yaxis.set_minor_locator(AutoMinorLocator(5))
@@ -464,6 +464,11 @@ for col in [col for col in train.columns if train[col].dtypes != "object"]:
     g.tick_params(which="minor", length=4)
     plt.show()
 
+# Normalization & Scaling
+
+train.loc[:, "Pregnancies"] = np.log1p(train.loc[:, "Pregnancies"])
+train.loc[:, "BMI"] = np.log1p(train.loc[:, "BMI"])
+train.loc[:, "Age"] = np.log1p(train.loc[:, "Age"])
 
 ###################
 # TEST
@@ -509,6 +514,13 @@ test.loc[(test["BMI"].isnull()) & (test["Outcome"] == 1), "BMI"] = \
     test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 1), "BMI"].mean()
 test.loc[(test["BMI"].isnull()) & (test["Outcome"] == 0), "BMI"] = \
     test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 0), "BMI"].mean()
+
+
+## Normalization & Scaling
+
+test.loc[:, "Pregnancies"] = np.log1p(test["Pregnancies"])
+test.loc[:, "BMI"] = np.log1p(test["BMI"])
+test.loc[:, "Age"] = np.log1p(test["Age"])
 
 ###################
 """
@@ -592,7 +604,7 @@ plt.show()
 
 weight_data.sort_values(by="score", ascending=False).iloc[0]
 
-lr_model = LogisticRegression(max_iter=1000, random_state=26, class_weight={0: (1-.697), 1: 0.697})
+lr_model = LogisticRegression(max_iter=1000, random_state=26, class_weight={0: (1-.728), 1: 0.728})
 
 cv_results = cross_validate(lr_model,
                            X_train, y_train,
@@ -620,7 +632,7 @@ plt.show()
 
 print(classification_report(y_test, y_pred))
 
-# Base Random Forest
+# Base Random Forest *
 
 rf = RandomForestClassifier(random_state=26, class_weight="balanced")
 
