@@ -505,9 +505,9 @@ test.loc[(test["Insulin"].isnull()) & (test["Outcome"] == 0), "Insulin"] = \
 # BMI
 outlier_ind_BMI = grab_outliers(test, "BMI", True)
 
-test.loc[(test["BMI"].isnull()) & (train["Outcome"] == 1), "BMI"] = \
+test.loc[(test["BMI"].isnull()) & (test["Outcome"] == 1), "BMI"] = \
     test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 1), "BMI"].mean()
-test.loc[(test["BMI"].isnull()) & (train["Outcome"] == 0), "BMI"] = \
+test.loc[(test["BMI"].isnull()) & (test["Outcome"] == 0), "BMI"] = \
     test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 0), "BMI"].mean()
 
 ###################
@@ -528,10 +528,152 @@ for col in [col for col in test.columns if test[col].dtypes != "object"]:
 print("Outlier percentage: %" + str((len(outliers_arr) / len(train)) * 100))
 """
 ###################
-
+###################
+# MODELLING       #
+###################
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from lightgbm import LGBMClassifier
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_score, cross_validate
+from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, plot_confusion_matrix
 
 X_train = train.drop("Outcome", axis=1)
 y_train = train["Outcome"]
 X_test = test.drop("Outcome", axis=1)
 y_test = test["Outcome"]
 
+###################
+# BASE MODELS
+###################
+
+# Base Logistic Regression
+lr = LogisticRegression(max_iter=1000, random_state=26, class_weight="balanced")
+
+cv_results = cross_validate(lr,
+                           X_train, y_train,
+                           cv=5,
+                           scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
+
+print(cv_results["test_f1"].mean())
+print(cv_results['test_accuracy'].mean())
+print(cv_results['test_precision'].mean())
+print(cv_results['test_recall'].mean())
+
+
+
+# F1 optimized logistic regression
+## To take a different approach towards imbalance of the data in respect to outcome
+## we may change the class_weight accordingly and search through best values for F1 score
+lr = LogisticRegression(max_iter=1000, random_state=26)
+
+#Setting the range for class weights
+weights = np.linspace(0.0,0.99,200)
+
+#Creating a dictionary grid for grid search
+param_grid = {'class_weight': [{0:x, 1:1.0-x} for x in weights]}
+
+#Fitting grid search to the train data with 5 folds
+gridsearch = GridSearchCV(estimator= lr,
+                          param_grid= param_grid,
+                          cv=StratifiedKFold(),
+                          n_jobs=-1,
+                          scoring='f1',
+                          verbose=2).fit(X_train, y_train)
+
+#Plotting the score for different values of weight
+plt.figure(figsize=(12,8))
+weight_data = pd.DataFrame({ 'score': gridsearch.cv_results_['mean_test_score'], 'weight': (1- weights)})
+sns.lineplot(weight_data['weight'], weight_data['score'])
+plt.xlabel('Weight for class 1')
+plt.ylabel('F1 score')
+plt.xticks([round(i/10,1) for i in range(0,11,1)])
+plt.title('Scoring for different class weights', fontsize=24)
+plt.show()
+
+weight_data.sort_values(by="score", ascending=False).iloc[0]
+
+lr_model = LogisticRegression(max_iter=1000, random_state=26, class_weight={0: (1-.697), 1: 0.697})
+
+cv_results = cross_validate(lr_model,
+                           X_train, y_train,
+                           cv=5,
+                           scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
+
+print(cv_results["test_f1"].mean())
+print(cv_results['test_accuracy'].mean())
+print(cv_results['test_precision'].mean())
+print(cv_results['test_recall'].mean())
+
+lr_model.fit(X_train, y_train)
+
+y_pred = lr_model.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 3)}")
+print(f"Recall: {round(recall_score(y_pred,y_test),3)}")
+print(f"Precision: {round(precision_score(y_pred,y_test), 3)}")
+print(f"F1: {round(f1_score(y_pred,y_test), 3)}")
+
+fig = plt.figure(figsize=(8, 6))
+g = fig.add_subplot(1,1,1)
+plot_confusion_matrix(lr_model, X_test, y_test, ax=g)
+plt.show()
+
+print(classification_report(y_test, y_pred))
+
+# Base Random Forest
+
+rf = RandomForestClassifier(random_state=26, class_weight="balanced")
+
+cv_results = cross_validate(rf,
+                            X_train, y_train,
+                            cv=5,
+                            scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
+
+cv_results['test_accuracy'].mean()
+cv_results['test_precision'].mean()
+cv_results['test_recall'].mean()
+cv_results["test_f1"].mean()
+
+rf = RandomForestClassifier(random_state=26, class_weight="balanced_subsample")
+
+cv_results = cross_validate(rf,
+                            X_train, y_train,
+                            cv=5,
+                            scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
+
+cv_results['test_accuracy'].mean()
+cv_results['test_precision'].mean()
+cv_results['test_recall'].mean()
+cv_results["test_f1"].mean()
+
+rf.fit(X_train, y_train)
+
+y_pred = rf.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 3)}")
+print(f"Recall: {round(recall_score(y_pred,y_test),3)}")
+print(f"Precision: {round(precision_score(y_pred,y_test), 3)}")
+print(f"F1: {round(f1_score(y_pred,y_test), 3)}")
+
+# Base LGBM
+
+lgbm = LGBMClassifier(random_state=26, class_weight="balanced")
+
+cv_results = cross_validate(lgbm,
+                            X_train, y_train,
+                            cv=5,
+                            scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
+
+cv_results['test_accuracy'].mean()
+cv_results['test_precision'].mean()
+cv_results['test_recall'].mean()
+cv_results["test_f1"].mean()
+
+lgbm.fit(X_train, y_train)
+
+y_pred = lgbm.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 3)}")
+print(f"Recall: {round(recall_score(y_pred,y_test),3)}")
+print(f"Precision: {round(precision_score(y_pred,y_test), 3)}")
+print(f"F1: {round(f1_score(y_pred,y_test), 3)}")
