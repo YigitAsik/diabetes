@@ -238,7 +238,13 @@ for col in num_cols:
     else:
         df.loc[df[col] == 0, col] = np.nan
 
+
 from sklearn.model_selection import train_test_split
+
+# Since I'm thinking about filling missing values, to avoid data leakage I split the data.
+# If it needs more elaboration, taking means and medians with full data resulting in information in test data
+# being included in preprocessing part. This may lead to high performance in both training and test data
+# but in production your model may perform poorly.
 
 train, test = train_test_split(df, test_size=0.2, stratify=df.Outcome, random_state=26)
 
@@ -323,9 +329,9 @@ g.tick_params(which="major", length=7)
 g.tick_params(which="minor", length=4)
 plt.show()
 
-train.loc[(train["BloodPressure"].isnull()) & (df["Outcome"] == 1), "BloodPressure"] = \
+train.loc[(train["BloodPressure"].isnull()) & (train["Outcome"] == 1), "BloodPressure"] = \
     train.loc[(~train.index.isin(outlier_ind_BloodPressure)) & (train["Outcome"] == 1), "BloodPressure"].mean()
-train.loc[(train["BloodPressure"].isnull()) & (df["Outcome"] == 0), "BloodPressure"] = \
+train.loc[(train["BloodPressure"].isnull()) & (train["Outcome"] == 0), "BloodPressure"] = \
     train.loc[(~train.index.isin(outlier_ind_BloodPressure)) & (train["Outcome"] == 0), "BloodPressure"].mean()
 
 # SkinThickness
@@ -396,3 +402,136 @@ train.loc[(train["BMI"].isnull()) & (train["Outcome"] == 1), "BMI"] = \
     train.loc[(~train.index.isin(outlier_ind_BMI)) & (train["Outcome"] == 1), "BMI"].mean()
 train.loc[(train["BMI"].isnull()) & (train["Outcome"] == 0), "BMI"] = \
     train.loc[(~train.index.isin(outlier_ind_BMI)) & (train["Outcome"] == 0), "BMI"].mean()
+
+
+# OUTLIERS
+# For outliers we have different options:
+# a) We can suppress them by rounding to the nearest limit that we calculate from IQR
+# b) We can trim them: we need to choose how much we want to trim
+# c) We can decide to do nothing
+##############################################
+
+"""
+def outlier_thresholds(dataframe, variable):
+    quartile1 = dataframe[variable].quantile(0.25)
+    quartile3 = dataframe[variable].quantile(0.75)
+    interquantile_range = quartile3 - quartile1
+    up_limit = quartile3 + 1.5 * interquantile_range
+    low_limit = quartile1 - 1.5 * interquantile_range
+    return low_limit, up_limit
+
+for col in [col for col in train.columns if str(col) not in ["DiabetesPedigreeFunction", "Age", "Outcome"]]:
+    replace_with_thresholds(train, col)
+"""
+
+##############################################
+
+"""
+# Drop outliers
+outliers_arr = []
+for col in [col for col in train.columns if train[col].dtypes != "object"]:
+    outlier_indexes = grab_outliers(train, col, True)
+    for i in outlier_indexes:
+        if i not in outliers_arr:
+            outliers_arr.append(i)
+        else:
+            continue
+
+print("Outlier percentage: %" + str((len(outliers_arr) / len(train)) * 100))
+"""
+
+##############################################
+
+for col in [col for col in train.columns if train[col].dtypes != "object"]:
+    fig = plt.figure(figsize=(8,6))
+    g = sns.kdeplot(x=train[col], shade=True)
+    g.set_title("Col name: " + str(col))
+    g.xaxis.set_minor_locator(AutoMinorLocator(5))
+    g.yaxis.set_minor_locator(AutoMinorLocator(5))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+for col in [col for col in train.columns if train[col].dtypes != "object"]:
+    fig = plt.figure(figsize=(8, 6))
+    g = sns.distplot(x=np.log1p(train[col]), kde=False, color="orange", hist_kws=dict(edgecolor="black", linewidth=2))
+    g.set_title("Col name: Log " + str(col))
+    g.xaxis.set_minor_locator(AutoMinorLocator(5))
+    g.yaxis.set_minor_locator(AutoMinorLocator(5))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+
+###################
+# TEST
+###################
+# HANDLING MISSING VALUES
+
+# Glucose
+# There is no extreme skew, so I just go with conditional means to fill.
+
+test.loc[(test["Glucose"].isnull()) & (test["Outcome"] == 1), "Glucose"] = test.loc[test["Outcome"] == 1, "Glucose"].mean()
+test.loc[(test["Glucose"].isnull()) & (test["Outcome"] == 0), "Glucose"] = test.loc[test["Outcome"] == 0, "Glucose"].mean()
+
+# Blood Pressure
+
+outlier_ind_BloodPressure = grab_outliers(test, "BloodPressure", True)
+
+test.loc[(test["BloodPressure"].isnull()) & (test["Outcome"] == 1), "BloodPressure"] = \
+    test.loc[(~test.index.isin(outlier_ind_BloodPressure)) & (test["Outcome"] == 1), "BloodPressure"].mean()
+test.loc[(test["BloodPressure"].isnull()) & (test["Outcome"] == 0), "BloodPressure"] = \
+    test.loc[(~test.index.isin(outlier_ind_BloodPressure)) & (test["Outcome"] == 0), "BloodPressure"].mean()
+
+# SkinThickness
+
+outlier_ind_SkinThickness = grab_outliers(test, "SkinThickness", True)
+
+test.loc[(test["SkinThickness"].isnull()) & (test["Outcome"] == 1), "SkinThickness"] = \
+    test.loc[(~test.index.isin(outlier_ind_SkinThickness)) & (test["Outcome"] == 1), "SkinThickness"].mean()
+test.loc[(test["SkinThickness"].isnull()) & (test["Outcome"] == 0), "SkinThickness"] = \
+    test.loc[(~test.index.isin(outlier_ind_SkinThickness)) & (test["Outcome"] == 0), "SkinThickness"].mean()
+
+# Insulin
+outlier_ind_Insulin = grab_outliers(test, "Insulin", True)
+
+test.loc[(test["Insulin"].isnull()) & (test["Outcome"] == 1), "Insulin"] = \
+    test.loc[(~test.index.isin(outlier_ind_Insulin)) & (test["Outcome"] == 1), "Insulin"].mean()
+test.loc[(test["Insulin"].isnull()) & (test["Outcome"] == 0), "Insulin"] = \
+    test.loc[(~test.index.isin(outlier_ind_Insulin)) & (test["Outcome"] == 0), "Insulin"].mean()
+
+# BMI
+outlier_ind_BMI = grab_outliers(test, "BMI", True)
+
+test.loc[(test["BMI"].isnull()) & (train["Outcome"] == 1), "BMI"] = \
+    test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 1), "BMI"].mean()
+test.loc[(test["BMI"].isnull()) & (train["Outcome"] == 0), "BMI"] = \
+    test.loc[(~test.index.isin(outlier_ind_BMI)) & (test["Outcome"] == 0), "BMI"].mean()
+
+###################
+"""
+for col in [col for col in test.columns if str(col) not in ["DiabetesPedigreeFunction", "Age", "Outcome"]]:
+    replace_with_thresholds(test, col)
+"""
+"""
+outliers_test_arr = []
+for col in [col for col in test.columns if test[col].dtypes != "object"]:
+    outlier_indexes = grab_outliers(test, col, True)
+    for i in outlier_indexes:
+        if i not in outliers_arr:
+            outliers_arr.append(i)
+        else:
+            continue
+
+print("Outlier percentage: %" + str((len(outliers_arr) / len(train)) * 100))
+"""
+###################
+
+
+X_train = train.drop("Outcome", axis=1)
+y_train = train["Outcome"]
+X_test = test.drop("Outcome", axis=1)
+y_test = test["Outcome"]
+
