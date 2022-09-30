@@ -381,7 +381,7 @@ train.loc[(train["Insulin"].isnull()) & (train["Outcome"] == 0), "Insulin"] = \
 outlier_ind_BMI = grab_outliers(train, "BMI", True)
 
 fig = plt.figure(figsize=(8,6))
-g = sns.boxplot(x=train["Insulin"], palette="rainbow")
+g = sns.boxplot(x=train["BMI"], palette="rainbow")
 g.yaxis.set_minor_locator(AutoMinorLocator())
 g.tick_params(which="both", width=2)
 g.tick_params(which="major", length=7)
