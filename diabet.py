@@ -2,13 +2,13 @@
 # LIBRARIES
 ###################
 
-import joblib
 import pandas as pd
 import numpy as np
 import seaborn as sns
 import missingno as msno
 from matplotlib import pyplot as plt
-from sklearn.feature_selection import mutual_info_regression
+from matplotlib.ticker import AutoMinorLocator
+from sklearn.feature_selection import mutual_info_classif
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, StandardScaler, RobustScaler
 
 pd.set_option('display.max_columns', None)
@@ -136,8 +136,8 @@ def high_correlated_cols(dataframe, plot=False, corr_th=0.90):
     return drop_list
 
 def outlier_thresholds(dataframe, variable):
-    quartile1 = dataframe[variable].quantile(0.01)
-    quartile3 = dataframe[variable].quantile(0.99)
+    quartile1 = dataframe[variable].quantile(0.25)
+    quartile3 = dataframe[variable].quantile(0.75)
     interquantile_range = quartile3 - quartile1
     up_limit = quartile3 + 1.5 * interquantile_range
     low_limit = quartile1 - 1.5 * interquantile_range
@@ -225,3 +225,174 @@ def check_skew(df_skew, column):
 diabetes = pd.read_csv("diabetes/diabetes.csv")
 df = diabetes.copy()
 
+df.isnull().any() # it returns false
+check_df(df) # however, NA values are coded as 0.
+
+num_cols = [col for col in df.columns if df[col].dtypes != "object" and col != "Outcome"]
+
+# "Pregnancies" can take the value 0 but others cannot
+
+for col in num_cols:
+    if col == "Pregnancies":
+        continue
+    else:
+        df.loc[df[col] == 0, col] = np.nan
+
+from sklearn.model_selection import train_test_split
+
+train, test = train_test_split(df, test_size=0.2, stratify=df.Outcome, random_state=26)
+
+nan_cols = missing_values_table(train, True)
+
+msno.matrix(train)
+plt.show()
+
+for col in nan_cols:
+    fig = plt.figure(figsize=(8,6))
+    g = sns.kdeplot(x=train[col], shade=True, hue=train["Outcome"])
+    g.set_title("Col name: " + str(col))
+    g.xaxis.set_minor_locator(AutoMinorLocator(5))
+    g.yaxis.set_minor_locator(AutoMinorLocator(5))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+for col in nan_cols:
+    fig = plt.figure(figsize=(8,6))
+    g = sns.kdeplot(x=train[col], shade=True, color="green")
+    g.set_title("Col name: " + str(col))
+    g.xaxis.set_minor_locator(AutoMinorLocator(5))
+    g.yaxis.set_minor_locator(AutoMinorLocator(5))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+for col in nan_cols:
+    fig = plt.figure(figsize=(8,6))
+    g = sns.distplot(x=train[col], kde=False, color="purple", hist_kws=dict(edgecolor="black", linewidth=2))
+    g.set_title("Col name: " + str(col))
+    g.xaxis.set_minor_locator(AutoMinorLocator(5))
+    g.yaxis.set_minor_locator(AutoMinorLocator(5))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+for col in [col for col in train.columns if col != "Outcome"]:
+    target_summary_with_num(train, "Outcome", col)
+
+# HANDLING MISSING VALUES
+
+# Glucose
+# There is no extreme skew, so I just go with conditional means to fill.
+
+train.loc[(train["Glucose"].isnull()) & (train["Outcome"] == 1), "Glucose"] = train.loc[train["Outcome"] == 1, "Glucose"].mean()
+train.loc[(train["Glucose"].isnull()) & (train["Outcome"] == 0), "Glucose"] = train.loc[train["Outcome"] == 0, "Glucose"].mean()
+
+# Blood Pressure
+fig = plt.figure(figsize=(8,6))
+g = sns.boxplot(x=train["BloodPressure"], palette="rainbow")
+g.yaxis.set_minor_locator(AutoMinorLocator())
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
+
+for j in train["Outcome"].unique():
+    plt.figure(figsize=(8,6))
+    g = sns.boxplot(x=train.loc[train["Outcome"] == j, "BloodPressure"], palette="rainbow")
+    g.yaxis.set_minor_locator(AutoMinorLocator())
+    g.set_title("Outcome: " + str(j))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+# There are some outliers, so I take that into account then go for the mean anyway since the distribution
+# resembles normal dist a lot.
+
+outlier_ind_BloodPressure = grab_outliers(train, "BloodPressure", True)
+
+fig = plt.figure(figsize=(8,6))
+g = sns.kdeplot(x=train.loc[~train.index.isin(outlier_ind_BloodPressure), "BloodPressure"], hue=train["Outcome"], shade=True)
+g.yaxis.set_minor_locator(AutoMinorLocator())
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
+
+train.loc[(train["BloodPressure"].isnull()) & (df["Outcome"] == 1), "BloodPressure"] = \
+    train.loc[(~train.index.isin(outlier_ind_BloodPressure)) & (train["Outcome"] == 1), "BloodPressure"].mean()
+train.loc[(train["BloodPressure"].isnull()) & (df["Outcome"] == 0), "BloodPressure"] = \
+    train.loc[(~train.index.isin(outlier_ind_BloodPressure)) & (train["Outcome"] == 0), "BloodPressure"].mean()
+
+# SkinThickness
+
+outlier_ind_SkinThickness = grab_outliers(train, "SkinThickness", True)
+
+fig = plt.figure(figsize=(8,6))
+g = sns.kdeplot(x=train.loc[~train.index.isin(outlier_ind_SkinThickness), "SkinThickness"], hue=train["Outcome"], shade=True)
+g.yaxis.set_minor_locator(AutoMinorLocator())
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
+
+train.loc[(train["SkinThickness"].isnull()) & (train["Outcome"] == 1), "SkinThickness"] = \
+    train.loc[(~train.index.isin(outlier_ind_SkinThickness)) & (train["Outcome"] == 1), "SkinThickness"].mean()
+train.loc[(train["SkinThickness"].isnull()) & (train["Outcome"] == 0), "SkinThickness"] = \
+    train.loc[(~train.index.isin(outlier_ind_SkinThickness)) & (train["Outcome"] == 0), "SkinThickness"].mean()
+
+# Insulin
+outlier_ind_Insulin = grab_outliers(train, "Insulin", True)
+
+fig = plt.figure(figsize=(8,6))
+g = sns.boxplot(x=train["Insulin"], palette="rainbow")
+g.yaxis.set_minor_locator(AutoMinorLocator())
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
+
+for j in train["Outcome"].unique():
+    plt.figure(figsize=(8,6))
+    g = sns.boxplot(x=train.loc[train["Outcome"] == j, "Insulin"], palette="rainbow")
+    g.yaxis.set_minor_locator(AutoMinorLocator())
+    g.set_title("Outcome: " + str(j))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+train.loc[(train["Insulin"].isnull()) & (train["Outcome"] == 1), "Insulin"] = \
+    train.loc[(~train.index.isin(outlier_ind_Insulin)) & (train["Outcome"] == 1), "Insulin"].mean()
+train.loc[(train["Insulin"].isnull()) & (train["Outcome"] == 0), "Insulin"] = \
+    train.loc[(~train.index.isin(outlier_ind_Insulin)) & (train["Outcome"] == 0), "Insulin"].mean()
+
+# BMI
+outlier_ind_BMI = grab_outliers(train, "BMI", True)
+
+fig = plt.figure(figsize=(8,6))
+g = sns.boxplot(x=train["Insulin"], palette="rainbow")
+g.yaxis.set_minor_locator(AutoMinorLocator())
+g.tick_params(which="both", width=2)
+g.tick_params(which="major", length=7)
+g.tick_params(which="minor", length=4)
+plt.show()
+
+for j in train["Outcome"].unique():
+    plt.figure(figsize=(8,6))
+    g = sns.boxplot(x=train.loc[train["Outcome"] == j, "BMI"], palette="rainbow")
+    g.yaxis.set_minor_locator(AutoMinorLocator())
+    g.set_title("Outcome: " + str(j))
+    g.tick_params(which="both", width=2)
+    g.tick_params(which="major", length=7)
+    g.tick_params(which="minor", length=4)
+    plt.show()
+
+train.loc[(train["BMI"].isnull()) & (train["Outcome"] == 1), "BMI"] = \
+    train.loc[(~train.index.isin(outlier_ind_BMI)) & (train["Outcome"] == 1), "BMI"].mean()
+train.loc[(train["BMI"].isnull()) & (train["Outcome"] == 0), "BMI"] = \
+    train.loc[(~train.index.isin(outlier_ind_BMI)) & (train["Outcome"] == 0), "BMI"].mean()
