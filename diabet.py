@@ -653,10 +653,10 @@ cv_results = cross_validate(rf,
                             cv=5,
                             scoring=["f1", "accuracy", "precision", "recall", "roc_auc"])
 
-cv_results['test_accuracy'].mean()
-cv_results['test_precision'].mean()
-cv_results['test_recall'].mean()
-cv_results["test_f1"].mean()
+print(cv_results['test_accuracy'].mean())
+print(cv_results['test_precision'].mean())
+print(cv_results['test_recall'].mean())
+print(cv_results["test_f1"].mean())
 
 rf.fit(X_train, y_train)
 
