@@ -689,3 +689,6 @@ print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 3)}")
 print(f"Recall: {round(recall_score(y_pred,y_test),3)}")
 print(f"Precision: {round(precision_score(y_pred,y_test), 3)}")
 print(f"F1: {round(f1_score(y_pred,y_test), 3)}")
+
+
+# MODELLING & HYPERPARAMETER TUNING
