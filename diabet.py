@@ -544,7 +544,8 @@ print("Outlier percentage: %" + str((len(outliers_arr) / len(train)) * 100))
 # MODELLING       #
 ###################
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 from lightgbm import LGBMClassifier
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, cross_val_score, cross_validate
 from sklearn.metrics import classification_report, accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix, plot_confusion_matrix
@@ -553,6 +554,7 @@ X_train = train.drop("Outcome", axis=1)
 y_train = train["Outcome"]
 X_test = test.drop("Outcome", axis=1)
 y_test = test["Outcome"]
+
 
 ###################
 # BASE MODELS
@@ -691,4 +693,91 @@ print(f"Precision: {round(precision_score(y_pred,y_test), 3)}")
 print(f"F1: {round(f1_score(y_pred,y_test), 3)}")
 
 
+# Base Models
+def base_models(X, y, scoring=["f1", "accuracy", "precision", "recall"]):
+    print("Base Models....")
+    classifiers = [('LR', LogisticRegression(max_iter=1000, random_state=26)),
+                   ("CART", DecisionTreeClassifier(random_state=26)),
+                   ("RF", RandomForestClassifier(random_state=26)),
+                   ('Adaboost', AdaBoostClassifier(random_state=26)),
+                   # ('GBM', GradientBoostingClassifier(random_state=26)),
+                   # ('XGBoost', XGBClassifier(random_state=26, use_label_encoder=False, eval_metric='logloss')),
+                   ('LightGBM', LGBMClassifier(random_state=26)),
+                   # ('CatBoost', CatBoostClassifier(verbose=False))
+                   ]
+
+    for name, classifier in classifiers:
+        cv_results = cross_validate(classifier, X, y, cv=5, scoring=scoring)
+        print(f"{scoring[0]}: {round(cv_results['test_f1'].mean(), 4)} ({name}) ")
+        print(f"{scoring[1]}: {round(cv_results['test_accuracy'].mean(), 4)} ({name}) ")
+        print(f"{scoring[2]}: {round(cv_results['test_precision'].mean(), 4)} ({name}) ")
+        print(f"{scoring[3]}: {round(cv_results['test_recall'].mean(), 4)} ({name}) ")
+
+
+base_models(X_train, y_train)
+
 # MODELLING & HYPERPARAMETER TUNING
+
+cart_params = {"random_state": 26,
+               'max_depth': range(2, 20),
+               "min_samples_split": range(2, 30)}
+
+rf_params = {"random_state": 26,
+             "max_depth": [8, 15, None],
+             "max_features": [5, 7, "auto"],
+             "min_samples_split": [15, 20],
+             "n_estimators": [300, 500, 800, 1200]}
+
+xgboost_params = {"random_state": 26,
+                  "learning_rate": [0.1, 0.01, 0.2],
+                  "max_depth": [5, 8, None],
+                  "n_estimators": [300, 500, 800, 1200],
+                  "colsample_bytree": [0.5, 0.7, 1]}
+
+lightgbm_params = {"random_state": 26,
+                   "learning_rate": [0.01, 0.1, 0.2],
+                   "n_estimators": [300, 500, 800, 1200],
+                   "colsample_bytree": [0.5, 0.7, 1]}
+
+classifiers = [("CART", DecisionTreeClassifier(), cart_params),
+               ("RF", RandomForestClassifier(), rf_params),
+               # ('XGBoost', XGBClassifier(use_label_encoder=False, eval_metric="logloss"), xgboost_params),
+               ('LightGBM', LGBMClassifier(), lightgbm_params)]
+
+def hyperparameter_optimization(X, y, cv=5, scoring=["f1", "accuracy", "precision", "recall"]):
+    print("Hyperparameter Optimization....")
+    best_models = {}
+    for name, classifier, params in classifiers:
+        print(f"########## {name} ##########")
+        cv_results = cross_validate(classifier, X, y, cv=cv, scoring=scoring)
+        print(f"{scoring[0]} (Before): {round(cv_results['test_f1'].mean(), 4)}")
+        print(f"{scoring[1]} (Before): {round(cv_results['test_accuracy'].mean(), 4)}")
+        print(f"{scoring[2]} (Before): {round(cv_results['test_precision'].mean(), 4)}")
+        print(f"{scoring[3]} (Before): {round(cv_results['test_recall'].mean(), 4)}")
+
+        gs_best = GridSearchCV(classifier, params, cv=cv, n_jobs=-1, verbose=False).fit(X, y)
+        final_model = classifier.set_params(**gs_best.best_params_)
+
+        cv_results = cross_validate(final_model, X, y, cv=cv, scoring=scoring)
+        print(f"{scoring[0]} (After): {round(cv_results['test_f1'].mean(), 4)}")
+        print(f"{scoring[1]} (After): {round(cv_results['test_accuracy'].mean(), 4)}")
+        print(f"{scoring[2]} (After): {round(cv_results['test_precision'].mean(), 4)}")
+        print(f"{scoring[3]} (After): {round(cv_results['test_recall'].mean(), 4)}")
+        print(f"{name} best params: {gs_best.best_params_}", end="\n\n")
+        best_models[name] = final_model
+    return best_models
+
+best_models_dict = hyperparameter_optimization(X_train, y_train)
+
+
+model_final = best_models_dict["LightGBM"].fit(X_train, y_train)
+
+import joblib
+
+joblib.dump(model_final, "diabetes/LightGBM.pkl")
+
+lgbm_model_from_dir = joblib.load("diabetes/LightGBM.pkl")
+
+random_selection = X_test.sample(1)
+
+lgbm_model_from_dir.predict(random_selection)
